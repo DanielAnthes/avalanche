@@ -1,4 +1,3 @@
-import warnings
 from typing import Dict
 
 import torch
@@ -6,9 +5,7 @@ from torch import Tensor
 from torch.nn.functional import normalize
 from torch.nn.modules import Module
 
-from avalanche.benchmarks.utils.utils import concat_datasets
 from avalanche.training.utils import get_last_fc_layer, swap_last_fc_layer
-from avalanche.benchmarks.utils import concat_classification_datasets
 from avalanche.training.plugins.strategy_plugin import SupervisedPlugin
 from avalanche.training.storage_policy import ClassBalancedBuffer
 from avalanche.benchmarks.utils.data_loader import ReplayDataLoader
@@ -60,7 +57,8 @@ class CoPEPlugin(SupervisedPlugin):
         )
 
         # Operational memory: Prototypical memory
-        self.p_mem = {}  # Scales with nb classes * feature size
+        # Scales with nb classes * feature size
+        self.p_mem: Dict[int, Tensor] = {}  
         self.p_size = p_size  # Prototype size determined on runtime
         self.tmp_p_mem = {}  # Intermediate to process batch for multiple times
         self.alpha = alpha
@@ -71,12 +69,6 @@ class CoPEPlugin(SupervisedPlugin):
         self.ppp_loss = PPPloss(self.p_mem, T=self.T)
 
         self.initialized = False
-
-        warnings.warn(
-            "The current version of COPE is not working properly."
-            "Please, use it carefully. The performance may not"
-            "be aligned with the actual COPE performance."
-        )
 
     def before_training(self, strategy, **kwargs):
         """Enforce using the PPP-loss and add a NN-classifier."""
@@ -156,9 +148,9 @@ class CoPEPlugin(SupervisedPlugin):
         """Initialize prototypes for previously unseen classes.
         :param targets: The targets Tensor to make prototypes for.
         """
-        y_unique = torch.unique(targets).squeeze().view(-1)
+        y_unique: Tensor = torch.unique(targets).squeeze().view(-1)
         for idx in range(y_unique.size(0)):
-            c = y_unique[idx].item()
+            c: int = y_unique[idx].item()
             if c not in self.p_mem:  # Init new prototype
                 self.p_mem[c] = (
                     normalize(

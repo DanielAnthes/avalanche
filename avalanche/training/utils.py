@@ -15,7 +15,7 @@ General utility functions for pytorch.
 
 """
 from collections import defaultdict
-from typing import NamedTuple, List, Optional, Tuple, Callable, Union
+from typing import Dict, NamedTuple, List, Optional, Tuple, Callable, Union
 
 import torch
 from torch import Tensor
@@ -23,6 +23,40 @@ from torch.nn import Module, Linear
 from torch.utils.data import Dataset, DataLoader
 
 from avalanche.models.batch_renorm import BatchRenorm2D
+from avalanche.benchmarks import OnlineCLExperience
+
+
+def at_task_boundary(training_experience) -> bool:
+    """
+    Given a training experience,
+    returns true if the experience is at the task boundary
+
+    More specifically:
+
+    - If task boundary is not available, returns True
+
+    - If task boundary is available,
+      returns True if the experience
+      is the first subexp
+
+    - If the experience is not an online experience, returns True
+
+    """
+
+    if isinstance(training_experience, OnlineCLExperience):
+        if training_experience.access_task_boundaries:
+            if training_experience.is_first_subexp:
+                return True
+        else:
+            return True
+    else:
+        return True
+
+
+def cycle(loader):
+    while True:
+        for batch in loader:
+            yield batch
 
 
 def trigger_plugins(strategy, event, **kwargs):
@@ -79,7 +113,7 @@ def load_all_dataset(dataset: Dataset, num_workers: int = 0):
         return x, y
 
 
-def zerolike_params_dict(model):
+def zerolike_params_dict(model: Module) -> Dict[str, 'ParamData']:
     """
     Create a list of (name, parameter), where parameter is initalized to zero.
     The list has as many parameters as model, with the same size.
@@ -91,7 +125,7 @@ def zerolike_params_dict(model):
                  for k, p in model.named_parameters()])
 
 
-def copy_params_dict(model, copy_grad=False):
+def copy_params_dict(model, copy_grad=False) -> Dict[str, 'ParamData']:
     """
     Create a list of (name, parameter), where parameter is copied from model.
     The list has as many parameters as model, with the same size.
@@ -99,7 +133,7 @@ def copy_params_dict(model, copy_grad=False):
     :param model: a pytorch model
     :param copy_grad: if True returns gradients instead of parameter values
     """
-    out = {}
+    out: Dict[str, ParamData] = {}
     for k, p in model.named_parameters():
         if copy_grad and p.grad is None:
             continue
@@ -161,7 +195,9 @@ def swap_last_fc_layer(model: Module, new_layer: Module) -> None:
 
 
 def adapt_classification_layer(
-    model: Module, num_classes: int, bias: bool = None
+    model: Module,
+    num_classes: int,
+    bias: Optional[bool] = None
 ) -> Tuple[str, Linear]:
     last_fc_layer: Linear
     last_fc_name, last_fc_layer = get_last_fc_layer(model)
@@ -246,10 +282,10 @@ def unfreeze_everything(model: Module, set_train_mode: bool = True):
 
 def freeze_up_to(
     model: Module,
-    freeze_until_layer: str = None,
+    freeze_until_layer: Optional[str] = None,
     set_eval_mode: bool = True,
     set_requires_grad_false: bool = True,
-    layer_filter: Callable[[LayerAndParameter], bool] = None,
+    layer_filter: Optional[Callable[[LayerAndParameter], bool]] = None,
     module_prefix: str = "",
 ):
     """
@@ -322,10 +358,11 @@ def examples_per_class(targets):
 class ParamData(object):
     def __init__(
             self,
-            name: str, shape: tuple = None,
+            name: str,
+            shape: Optional[tuple] = None,
             init_function: Callable[[torch.Size], torch.Tensor] = torch.zeros,
             init_tensor: Union[torch.Tensor, None] = None,
-            device: str = 'cpu'):
+            device: Union[str, torch.device] = 'cpu'):
         """
         An object that contains a tensor with methods to expand it along
         a single dimension.
@@ -338,7 +375,8 @@ class ParamData(object):
             on subsequent calls of `reset_like` method.
         :param init_tensor: value to be used when creating the object. If None,
             `init_function` will be used.
-        :param device: pytorch like device specification as a string
+        :param device: pytorch like device specification as a string or 
+            `torch.device`.
         """
         assert isinstance(name, str)
         assert (init_tensor is not None) or (shape is not None)
@@ -347,9 +385,13 @@ class ParamData(object):
 
         self.init_function = init_function
         self.name = name
-        self.shape = torch.Size(shape) if shape is not None else \
-            init_tensor.size()
-        self.device = device
+        if shape is not None:
+            self.shape = torch.Size(shape) 
+        else:
+            assert init_tensor is not None
+            self.shape = init_tensor.size()
+            
+        self.device = torch.device(device)
         if init_tensor is not None:
             self._data: torch.Tensor = init_tensor
         else:
@@ -421,6 +463,7 @@ class ParamData(object):
 
 
 __all__ = [
+    "trigger_plugins",
     "load_all_dataset",
     "zerolike_params_dict",
     "copy_params_dict",
@@ -436,5 +479,7 @@ __all__ = [
     "unfreeze_everything",
     "freeze_up_to",
     "examples_per_class",
-    "ParamData"
+    "ParamData",
+    "cycle",
+    "at_task_boundary",
 ]

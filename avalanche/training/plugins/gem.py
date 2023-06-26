@@ -1,6 +1,8 @@
+from typing import Dict
 import numpy as np
 import quadprog
 import torch
+from torch import Tensor
 from torch.utils.data import DataLoader
 
 from avalanche.models import avalanche_forward
@@ -30,9 +32,11 @@ class GEMPlugin(SupervisedPlugin):
         self.patterns_per_experience = int(patterns_per_experience)
         self.memory_strength = memory_strength
 
-        self.memory_x, self.memory_y, self.memory_tid = {}, {}, {}
+        self.memory_x: Dict[int, Tensor] = dict()
+        self.memory_y: Dict[int, Tensor] = dict()
+        self.memory_tid: Dict[int, Tensor] = dict()
 
-        self.G = None
+        self.G: Tensor = torch.empty(0)
 
     def before_training_iteration(self, strategy, **kwargs):
         """
@@ -123,7 +127,8 @@ class GEMPlugin(SupervisedPlugin):
             dataset.collate_fn if hasattr(dataset, "collate_fn") else None
         )
         dataloader = DataLoader(
-            dataset, batch_size=batch_size, collate_fn=collate_fn
+            dataset, batch_size=batch_size, collate_fn=collate_fn,
+            shuffle=True
         )
         tot = 0
         for mbatch in dataloader:
